@@ -41,8 +41,8 @@
             "type": "image/png"
         }
     ],
-    "name": "Budget Radium",
-    "short_name": "Budget",
+    "name": "Radium Budget Tracker",
+    "short_name": "Radium",
     "orientation": "portrait",
     "display": "standalone",
     "start_url": ".",
