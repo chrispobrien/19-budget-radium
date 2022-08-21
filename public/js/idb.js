@@ -77,8 +77,75 @@ function loadLocal() {
     }
 };
 
-// add items from the server that don't exist in the local db
+// sync local db to server
 function syncItems(data) {
+    // open a transaction on your db
+    const transaction = db.transaction(['item'], 'readwrite');
+
+    // access your object store
+    const itemObjectStore = transaction.objectStore('item');
+
+    // iterate through all local records with a cursor so we can add _id to local object
+    const request = itemObjectStore.openCursor();
+
+    request.onerror = function(event) {
+        console.log('error fetching data: ', event)
+    };
+
+    request.onsuccess = function(event) {
+        let cursor = event.target.result;
+        if (cursor) {
+            let value = cursor.value;
+
+            // if no _id then this is a new item that needs to be sent to the server
+            if (value && !value._id) {
+                fetch('/api/transaction', {
+                    method: 'POST',
+                    body: JSON.stringify(value),
+                    headers: {
+                        Accept: 'application/json, text/plain, */*',
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(postData => {
+                    console.log('Sent to server: ',postData);
+                    // update local record with _id value
+                    cursor.update(postData);
+                })
+                .catch(err => {
+                    console.log('Unable to send local items to server: offline or server unavailable');
+                })
+            }
+            cursor.continue();
+        } else {
+            // when done sending items to server, getAll local records
+            const getAll = itemObjectStore.getAll();
+
+            getAll.onerror = function(event) {
+                console.log('error fetching data: ', event);
+            };
+        
+            getAll.onsuccess = function(event) {
+                // if there are new items on server, not in local db, add them
+                data.map(item => {
+                    // if there is no local record with the server _id, add this record from the server to local
+                    if (getAll.result.filter(localItem => localItem._id === item._id).length === 0) {
+                        itemObjectStore.add(item);
+                    };
+                });
+                transactions = getAll.result;
+                populateTotal();
+                populateTable();
+                populateChart();
+            };
+        };
+    };
+};
+
+
+// add items from the server that don't exist in the local db
+function syncItemsGetAll(data) {
     // open a transaction on your db
     const transaction = db.transaction(['item'], 'readwrite');
 
@@ -90,6 +157,7 @@ function syncItems(data) {
 
     // upon a successful .getAll() execution, run this function
     getAll.onsuccess = function() {
+        // download step
         // for all api items, check if it exists in the local db, if not add it
         data.map(item => {
             // if there is no local record with the server _id, add this record from the server to local
@@ -97,6 +165,7 @@ function syncItems(data) {
                 itemObjectStore.add(item);
             };
         });
+        // upload step
         // for all items in the local db, check if it has an _id, if not send to server
         getAll.result.filter(localItem => !localItem._id).map(item => {
             fetch('/api/transaction', {
@@ -109,13 +178,18 @@ function syncItems(data) {
             })
             .then(response => response.json())
             .then(postData => {
-                console.log(item);
-                console.log(postData);
+                console.log('Sent to server: ',postData);
             })
             .catch(err => {
                 console.log('Unable to sync: offline or server unavailable');
             })
         });
+
+        const clearLocal = itemObjectStore.clear();
+
+        clearLocal.onsuccess = function() {
+        
+        }
     }
 
 }
