@@ -9,9 +9,14 @@ fetch("/api/transaction")
     // save db data on global variable
     transactions = data;
 
+    syncItems(data);
     populateTotal();
     populateTable();
     populateChart();
+  })
+  .catch(err => {
+    // load from local IndexedDb if api is not available
+    loadLocal();
   });
 
 function populateTotal() {

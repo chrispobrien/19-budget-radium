@@ -16,6 +16,7 @@ const FILES_TO_CACHE = [
     "./icons/icon-128x128.png",
     "./icons/icon-96x96.png",
     "./icons/icon-72x72.png",
+    "https://cdn.jsdelivr.net/npm/chart.js@2.8.0"
 ];
 
 self.addEventListener('install', function(event) {

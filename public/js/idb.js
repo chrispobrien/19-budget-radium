@@ -1,5 +1,5 @@
 let db;
-const request = indexedDb.open('budget_radium', 1);
+const request = indexedDB.open('budget_radium', 1);
 
 // this event will emit if the database version changes (nonexistant to version 1, v1 to v2, etc.)
 //  OR upon first connection will create the version 1 object store
@@ -18,9 +18,26 @@ request.onsuccess = function(event) {
     // if browser is online send budget items to MongoDB
     if (navigator.online) {
         // upload any items created offline
-        uploadItem();
-        // create a local copy
-        downloadItem();
+        // uploadItem();
+        // Get all server transactions
+        fetch("/api/transaction")
+            .then(response => {
+                return response.json();
+            })
+            .then(data => {
+                // save db data on global variable
+                // transactions = data;
+
+                // sync local and server db
+                syncItems(data);
+                populateTotal();
+                populateTable();
+                populateChart();
+            })
+            .catch(err => {
+            // load from local IndexedDb if api is not available
+                console.log(err);
+            });
     }
 };
 
@@ -41,6 +58,68 @@ function saveRecord(record) {
     itemObjectStore.add(record);
 };
 
+function loadLocal() {
+    // open a transaction on your db
+    const transaction = db.transaction(['item'], 'readwrite');
+
+    // access your object store
+    const itemObjectStore = transaction.objectStore('item');
+
+    // get all records from store and set to a variable (note async)
+    const getAll = itemObjectStore.getAll();
+
+    // upon success, set transactions to result and populate display
+    getAll.onsuccess = function() {
+        transactions = getAll.result;
+        populateTotal();
+        populateTable();
+        populateChart();
+    }
+};
+
+// add items from the server that don't exist in the local db
+function syncItems(data) {
+    // open a transaction on your db
+    const transaction = db.transaction(['item'], 'readwrite');
+
+    // access your object store
+    const itemObjectStore = transaction.objectStore('item');
+
+    // get all records from store and set to a variable
+    const getAll = itemObjectStore.getAll();
+
+    // upon a successful .getAll() execution, run this function
+    getAll.onsuccess = function() {
+        // for all api items, check if it exists in the local db, if not add it
+        data.map(item => {
+            // if there is no local record with the server _id, add this record from the server to local
+            if (getAll.result.filter(localItem => localItem._id === item._id).length === 0) {
+                itemObjectStore.add(item);
+            };
+        });
+        // for all items in the local db, check if it has an _id, if not send to server
+        getAll.result.filter(localItem => !localItem._id).map(item => {
+            fetch('/api/transaction', {
+                method: 'POST',
+                body: JSON.stringify(item),
+                headers: {
+                    Accept: 'application/json, text/plain, */*',
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(postData => {
+                console.log(item);
+                console.log(postData);
+            })
+            .catch(err => {
+                console.log('Unable to sync: offline or server unavailable');
+            })
+        });
+    }
+
+}
+
 // clone server items - send local IndexedDb items to server and vice versa
 function uploadItem() {
     // open a transaction on your db
@@ -56,31 +135,39 @@ function uploadItem() {
     getAll.onsuccess = function() {
         // if there was data in indexedDb's store, let's send it to the api server
         if (getAll.result.length > 0) {
-            fetch('/api/transaction', {
-                method: 'POST',
-                body: JSON.stringify(getAll.result),
-                headers: {
-                    Accept: 'application/json, text/plain, */*',
-                    'Content-Type': 'application/json'
-                }
+            // new items in the local db don't contain the MongoDB _id
+            let getNew = getAll.result.filter(item => !item._id);
+            // for each new item, post to MongoDB
+            getNew.result.map(item => {
+                fetch('/api/transaction', {
+                    method: 'POST',
+                    body: JSON.stringify(item),
+                    headers: {
+                        Accept: 'application/json, text/plain, */*',
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.message) {
+                        throw new Error(data);
+                    }
+                    // open one more transaction
+                    const transaction = db.transaction(['item'], 'readwrite');
+                    // access the local item object store
+                    const itemObjectStore = transaction.objectStore('item');
+                    // update the item in the store
+                    // itemObjectStore.clear();
+                    console.log(item);
+                    console.log(data);
+    
+                    // console.log('All saved budget items have been submitted!');
+                })
+                .catch(err => {
+                    console.log(err);
+                });            
             })
-            .then(response => response.json())
-            .then(serverResponse => {
-                if (serverResponse.message) {
-                    throw new Error(serverResponse);
-                }
-                // open one more transaction
-                const transaction = db.transaction(['item'], 'readwrite');
-                // access the local item object store
-                const itemObjectStore = transaction.objectStore('item');
-                // clear all items in your store
-                itemObjectStore.clear();
-
-                console.log('All saved budget items have been submitted!');
-            })
-            .catch(err => {
-                console.log(err);
-            });
+            
         };
     };
 };
