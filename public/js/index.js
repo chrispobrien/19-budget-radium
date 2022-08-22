@@ -7,10 +7,8 @@ fetch("/api/transaction")
   })
   .then(data => {
     // save db data on global variable
+    console.log('Initial fetch from index.html ok!');
     transactions = data;
-
-    // sync local db with server
-    syncItems(data);
 
     populateTotal();
     populateTable();
@@ -19,6 +17,7 @@ fetch("/api/transaction")
   .catch(err => {
     // load from local IndexedDb if api is not available
     loadLocal();
+    console.log(err);
   });
 
 function populateTotal() {

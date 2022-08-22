@@ -6,7 +6,7 @@ const request = indexedDB.open('budget_radium', 1);
 request.onupgradeneeded = function(event) {
     // save a reference to the database
     const db = event.target.result;
-    // create an object store (table) called 'new_item', set it to have an auto incrementing primary key of sorts
+    // create an object store (table) called 'item', set it to have an auto incrementing primary key of sorts
     db.createObjectStore('item', {autoIncrement: true} );
 };
 
@@ -18,8 +18,6 @@ request.onsuccess = function(event) {
     // if browser is online fetch server transactions and sync local db
     if (navigator.online) {
         uploadItems();
-    } else {
-        loadLocal();
     }
 };
 
@@ -114,6 +112,20 @@ function uploadItems() {
                 console.log('Unable to send local items to server: offline or server unavailable');
                 console.log(err);
             });
+        } else {
+            // loadLocal();
+            fetch('/api/transaction')
+            .then(response => response.json())
+            .then(data => {
+                transactions = data;
+                syncItems(data);
+                populateTotal();
+                populateTable();
+                populateChart();
+            })
+            .catch(err => {
+                console.log(err);
+            });
         };
     };
 };
@@ -126,13 +138,14 @@ function syncItems(data) {
     // access your object store
     const itemObjectStore = transaction.objectStore('item');
 
-    // iterate through all local records with a cursor so we can add _id to local object
+    // clear local store
     const request = itemObjectStore.clear();
 
     request.onerror = function(event) {
         console.log('error clearing data: ', event)
     };
 
+    // add api items to local store
     request.onsuccess = function(event) {
         data.map(item => itemObjectStore.add(item));
     };

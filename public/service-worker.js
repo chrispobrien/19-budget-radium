@@ -3,6 +3,7 @@ const VERSION = 'version_01';
 const CACHE_NAME = APP_PREFIX + VERSION;
 
 const FILES_TO_CACHE = [
+    ".",
     "./index.html",
     "./manifest.json",
     "./css/styles.css",
@@ -15,8 +16,7 @@ const FILES_TO_CACHE = [
     "./icons/icon-144x144.png",
     "./icons/icon-128x128.png",
     "./icons/icon-96x96.png",
-    "./icons/icon-72x72.png",
-    "https://cdn.jsdelivr.net/npm/chart.js@2.8.0"
+    "./icons/icon-72x72.png"
 ];
 
 self.addEventListener('install', function(event) {
