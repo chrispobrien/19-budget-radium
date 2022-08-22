@@ -15,29 +15,23 @@ request.onsuccess = function(event) {
     // when db is successfully created with its object store (from onupgradeneeded event above) or simply established a connection, save reference to db in global variable
     db = event.target.result;
 
-    // if browser is online send budget items to MongoDB
+    // if browser is online fetch server transactions and sync local db
     if (navigator.online) {
-        // upload any items created offline
-        // uploadItem();
         // Get all server transactions
         fetch("/api/transaction")
             .then(response => {
                 return response.json();
             })
             .then(data => {
-                // save db data on global variable
-                // transactions = data;
-
                 // sync local and server db
                 syncItems(data);
-                populateTotal();
-                populateTable();
-                populateChart();
             })
             .catch(err => {
-            // load from local IndexedDb if api is not available
                 console.log(err);
             });
+    } else {
+        // if browser is offline, load from IndexedDB
+        loadLocal();
     }
 };
 
@@ -58,6 +52,7 @@ function saveRecord(record) {
     itemObjectStore.add(record);
 };
 
+// load transactions from IndexedDB
 function loadLocal() {
     // open a transaction on your db
     const transaction = db.transaction(['item'], 'readwrite');
@@ -70,7 +65,7 @@ function loadLocal() {
 
     // upon success, set transactions to result and populate display
     getAll.onsuccess = function() {
-        transactions = getAll.result;
+        transactions = getAll.result.reverse();
         populateTotal();
         populateTable();
         populateChart();
@@ -95,10 +90,11 @@ function syncItems(data) {
     request.onsuccess = function(event) {
         let cursor = event.target.result;
         if (cursor) {
+            let key = cursor.key;
             let value = cursor.value;
 
             // if no _id then this is a new item that needs to be sent to the server
-            if (value && !value._id) {
+            if (!value._id) {
                 fetch('/api/transaction', {
                     method: 'POST',
                     body: JSON.stringify(value),
@@ -111,10 +107,14 @@ function syncItems(data) {
                 .then(postData => {
                     console.log('Sent to server: ',postData);
                     // update local record with _id value
-                    cursor.update(postData);
+                    // since this is async we have to create a new transaction
+                    const t = db.transaction(['item'], 'readwrite');
+                    const i = t.objectStore('item');
+                    i.put(postData, key);
                 })
                 .catch(err => {
                     console.log('Unable to send local items to server: offline or server unavailable');
+                    console.log(err);
                 })
             }
             cursor.continue();
@@ -134,116 +134,55 @@ function syncItems(data) {
                         itemObjectStore.add(item);
                     };
                 });
-                transactions = getAll.result;
+
+                transactions = getAll.result.reverse();
                 populateTotal();
                 populateTable();
                 populateChart();
             };
         };
+
+        itemObjectStore.oncomplete = function(event) {
+            const getAll = itemObjectStore.getAll();
+
+            getAll.onerror = function(event) {
+                console.log('error fetching data: ', event);
+            };
+        
+            getAll.onsuccess = function(event) {
+                // if there are new items on server, not in local db, add them
+                data.map(item => {
+                    // if there is no local record with the server _id, add this record from the server to local
+                    if (getAll.result.filter(localItem => localItem._id === item._id).length === 0) {
+                        itemObjectStore.add(item);
+                    };
+                });
+
+                transactions = getAll.result.reverse();
+                populateTotal();
+                populateTable();
+                populateChart();
+            };            
+        }
     };
 };
 
-
-// add items from the server that don't exist in the local db
-function syncItemsGetAll(data) {
-    // open a transaction on your db
-    const transaction = db.transaction(['item'], 'readwrite');
-
-    // access your object store
-    const itemObjectStore = transaction.objectStore('item');
-
-    // get all records from store and set to a variable
-    const getAll = itemObjectStore.getAll();
-
-    // upon a successful .getAll() execution, run this function
-    getAll.onsuccess = function() {
-        // download step
-        // for all api items, check if it exists in the local db, if not add it
-        data.map(item => {
-            // if there is no local record with the server _id, add this record from the server to local
-            if (getAll.result.filter(localItem => localItem._id === item._id).length === 0) {
-                itemObjectStore.add(item);
-            };
-        });
-        // upload step
-        // for all items in the local db, check if it has an _id, if not send to server
-        getAll.result.filter(localItem => !localItem._id).map(item => {
-            fetch('/api/transaction', {
-                method: 'POST',
-                body: JSON.stringify(item),
-                headers: {
-                    Accept: 'application/json, text/plain, */*',
-                    'Content-Type': 'application/json'
-                }
-            })
-            .then(response => response.json())
-            .then(postData => {
-                console.log('Sent to server: ',postData);
-            })
-            .catch(err => {
-                console.log('Unable to sync: offline or server unavailable');
-            })
-        });
-
-        const clearLocal = itemObjectStore.clear();
-
-        clearLocal.onsuccess = function() {
-        
-        }
-    }
-
-}
-
 // clone server items - send local IndexedDb items to server and vice versa
 function uploadItem() {
-    // open a transaction on your db
-    const transaction = db.transaction(['item'], 'readwrite');
-
-    // access your object store
-    const itemObjectStore = transaction.objectStore('item');
-
-    // get all records from store and set to a variable
-    const getAll = itemObjectStore.getAll();
-
-    // upon a successful .getAll() execution, run this function
-    getAll.onsuccess = function() {
-        // if there was data in indexedDb's store, let's send it to the api server
-        if (getAll.result.length > 0) {
-            // new items in the local db don't contain the MongoDB _id
-            let getNew = getAll.result.filter(item => !item._id);
-            // for each new item, post to MongoDB
-            getNew.result.map(item => {
-                fetch('/api/transaction', {
-                    method: 'POST',
-                    body: JSON.stringify(item),
-                    headers: {
-                        Accept: 'application/json, text/plain, */*',
-                        'Content-Type': 'application/json'
-                    }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.message) {
-                        throw new Error(data);
-                    }
-                    // open one more transaction
-                    const transaction = db.transaction(['item'], 'readwrite');
-                    // access the local item object store
-                    const itemObjectStore = transaction.objectStore('item');
-                    // update the item in the store
-                    // itemObjectStore.clear();
-                    console.log(item);
-                    console.log(data);
-    
-                    // console.log('All saved budget items have been submitted!');
-                })
-                .catch(err => {
-                    console.log(err);
-                });            
-            })
-            
-        };
-    };
+    fetch("/api/transaction")
+    .then(response => {
+        return response.json();
+    })
+    .then(data => {
+        // sync local and server db
+        syncItems(data);
+        // populateTotal();
+        // populateTable();
+        // populateChart();
+    })
+    .catch(err => {
+        console.log(err);
+    });
 };
 
 // listen for app to come back online
