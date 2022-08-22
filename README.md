@@ -1,8 +1,11 @@
 # Radium Budget Tracker
+![MongoDb] ![express]
 
 ## Description
 
 This budget tracker app allows you to record your expenses and income while online or offline! It is a progressive web app (PWA) and you can install it on your cell phone, to your home screen, or on your desktop or laptop!
+
+![screenshot]
 
 ## Installation
 
@@ -31,3 +34,12 @@ npm start
 ## Credits
 
 Most of this app was supplied by Columbia Engineering Coding Bootcamp/Trilogy.  The homework challenge was to add /public/idb.js, /manifest.json and /service-worker.js
+
+## License
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+[mongoDB]: https://img.shields.io/badge/MongoDB-4EA94B?style=for-the-badge&logo=mongodb&logoColor=white
+[express]: https://img.shields.io/badge/Express.js-404D59?style=for-the-badge
+[License: MIT]: https://img.shields.io/badge/License-MIT-yellow.svg
+[screenshot]: public/images/screenshot.png
