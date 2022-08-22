@@ -18,6 +18,7 @@ fetch("/api/transaction")
   })
   .catch(err => {
     // load from local IndexedDb if api is not available
+    loadLocal();
   });
 
 function populateTotal() {
@@ -135,6 +136,8 @@ function sendTransaction(isAdding) {
       errorEl.textContent = "Missing Information";
     }
     else {
+      // save successful post in indexed db
+      saveRecord(data);
       // clear form
       nameEl.value = "";
       amountEl.value = "";
